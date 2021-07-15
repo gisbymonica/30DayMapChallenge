@@ -1,5 +1,5 @@
-"# 30DayMapChallenge" 
+# 30DayMapChallenge
 
-To View Earthquakes rendered using ArcGIS JS API: https://gisbymonica.github.io/30DayMapChallenge/Day1-Point-Earthquake.html
+[Rendering in 3D : ](https://gisbymonica.github.io/30DayMapChallenge/Day1-Point-Earthquake.html) This site renders Earthquake points from ArcGIS Service using ArcGIS JS API 4.17.
 
-For more analysis and queries on Time-series Earthquake Data: https://gisbymonica.github.io/30DayMapChallenge/Earthquake-Analysis.html
+[Query and Time-Series : ](https://gisbymonica.github.io/30DayMapChallenge/Earthquake-Analysis.html) This site queries Earthquake features on the client side and enables users to view time-series data using ArcGIS JS API 4.20.
