@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+   <meta charset="utf-8" />
+   <title>
+      Earthquake visualization (3D)
+   </title>
+   <link rel="stylesheet" href="https://js.arcgis.com/4.20/esri/themes/light/main.css" />
+   <script type="module" src="https://js.arcgis.com/calcite-components/1.0.0-beta.56/calcite.esm.js"></script>
+   <script src="https://js.arcgis.com/calcite-components/1.0.0-beta.56/calcite.js"></script>
+   <link rel="stylesheet" type="text/css" href="https://js.arcgis.com/calcite-components/1.0.0-beta.56/calcite.css" />
+   <link rel="stylesheet" href="https://js.arcgis.com/4.20/esri/themes/dark/main.css" />
+   <script src="https://js.arcgis.com/4.20/"></script>
+
+   <style>
+      html,
+      body,
+      #viewDiv {
+         padding: 0;
+         margin: 0;
+         height: 100%;
+         width: 100%;
+      }
+
+      #infoDiv {
+         padding: 6px;
+         width: 370px;
+         height: 97%;
+         position: absolute;
+         top: 10px;
+         right: 10px;
+         --calcite-ui-brand: #71C96E;
+         --calcite-ui-brand-hover: #67B564;
+      }
+
+      #resultsDiv {
+         overflow: auto;
+         display: none;
+      }
+   </style>
+
+   <script>
+      require([
+         "esri/layers/FeatureLayer",
+         "esri/Map",
+         "esri/views/SceneView",
+         "esri/widgets/Legend",
+         "esri/widgets/Expand",
+         "esri/symbols/WebStyleSymbol",
+         "esri/Basemap",
+         "esri/rest/support/TopFeaturesQuery",
+         "esri/rest/support/TopFilter"
+      ], (FeatureLayer, Map, SceneView, Legend, Expand,
+         WebStyleSymbol,
+         Basemap,
+         TopFeaturesQuery,
+         TopFilter) => {
+
+         var renderer = {
+            type: "simple",
+            symbol: {
+               type: "point-3d",
+               symbolLayers: [
+                  {
+                     type: "object",
+                     resource: {
+                        primitive: "cone"
+                     },
+                     width: 50000,
+                  }
+               ]
+            },
+            label: "Earthquake Location",
+            visualVariables: [
+               {
+                  type: "color",
+                  field: "mag",
+                  stops: [
+                     {
+                        value: 0,
+                        color: "blue"
+                     },
+                     {
+                        value: 7,
+                        color: "red"
+                     }
+                  ]
+               },
+               {
+                  type: "size",
+                  field: "depth",
+                  stops: [
+                     {
+                        value: 20,
+                        size: 60000
+                     },
+                     {
+                        value: 150,
+                        size: 500000
+                     }
+                  ],
+                  axis: "height"
+               },
+               {
+                  type: "size",
+                  axis: "width-and-depth",
+                  useSymbolValue: true
+               }
+            ]
+         };
+
+         var template = {
+            content: [
+               {
+                  type: "fields",
+                  fieldInfos: [
+                     {
+                        fieldName: "mag",
+                        label: "Magnitude"
+                     },
+                     {
+                        fieldName: "depth",
+                        label: "Depth"
+                     },
+                     {
+                        fieldName: "sig",
+                        label: "Significance"
+                     },
+                     {
+                        fieldName: "alert",
+                        label: "Alert"
+                     },
+                     {
+                        fieldName: "detail",
+                        label: "Detail"
+                     },
+                     {
+                        fieldName: "url",
+                        label: "URL"
+                     }
+                  ]
+               }
+            ]
+         };
+
+         var earthQuakeLayer = new FeatureLayer({
+            url:
+               "https://services9.arcgis.com/RHVPKKiFTONKtxq3/ArcGIS/rest/services/USGS_Seismic_Data_v1/FeatureServer/0",
+            renderer: renderer,
+            popupTemplate: template
+         });
+
+
+         var map = new Map({
+            basemap: "topo",
+            layers: [earthQuakeLayer]
+         });
+
+         var initCam = {
+            position: {
+               x: 15094839,
+               y: 513987,
+               z: 5803278,
+               spatialReference: {
+                  wkid: 3857
+               }
+            },
+            heading: 358.8,
+            tilt: 13.7
+         };
+
+         var view = new SceneView({
+            map: map,
+            container: "viewDiv",
+            camera: initCam
+         });
+
+         const legend = new Expand({
+            content: new Legend({
+               view: view,
+               style: "classic"
+            }),
+            view: view,
+            expanded: true
+         });
+
+         view.ui.add(legend, "bottom-left");
+
+         //QUERY
+
+         // get UI components involved in top features query
+         const depthSort = document.getElementById(
+            "depthSort"
+         );
+         const magnitudeSelection = document.getElementById(
+            "magnitudeSelection"
+         );
+         const clearQueryButton = document.getElementById("clear-query");
+         const queryQuakesButton = document.getElementById("query-quakes");
+
+         view.whenLayerView(earthQuakeLayer).then(function (layerView) {
+            layerView.watch("updating", function (value) {
+               if (!value) {
+                  queryQuakesButton.addEventListener("click", () => {
+                     let depthSortOption, magnitudeOption, whereClause, orderByClause;
+                     depthSortOption = depthSort.selectedItem.value;
+                     magnitudeOption = magnitudeSelection.selectedOption.value;
+                     if (magnitudeOption == "LESS") {
+                        whereClause = "mag < 6"
+                     } else if (magnitudeOption == "GREATER") {
+                        whereClause = "mag > 6"
+                     } else {
+                        whereClause = "1=1"
+                     }
+                     orderByClause = [`depth ${depthSortOption}`]
+                     layerView
+                        .queryFeatures({
+                           where: whereClause,
+                           orderByFields: orderByClause,
+                           outFields: ["*"],
+                           returnGeometry: true
+                        })
+                        .then(function (results) {
+                           // do something with the resulting graphics
+                           console.log(results.features)
+                           document.getElementById("resultsDiv").style.display = "block";
+                           document.getElementById(
+                              "resultsHeading"
+                           ).innerHTML = `Results: ${results.features.length} Incidents`;
+                           document.getElementById("results").innerHTML = "";
+
+                           graphics = results.features;
+                           graphics.forEach((result, index) => {
+                              const attributes = result.attributes;
+                              const item = document.createElement("calcite-pick-list-item");
+                              item.setAttribute("label", attributes.id);
+                              item.setAttribute("value", index);
+                              const total = `Depth: ${attributes.depth}`;
+                              const state = `Magnitude: ${attributes.mag}`;
+                              const description = attributes.alert + " alert";
+                              item.setAttribute("description", description);
+                              item.addEventListener("click", quakeResultClickHandler);
+                              document.getElementById("results").appendChild(item);
+                           });
+                           // graphics = results.features;
+                        });
+                  })
+                  // wait for the layer view to finish updating
+                  // get all the features available for drawing.
+               }
+            });
+
+            function quakeResultClickHandler(event) {
+            const target = event.target;
+            const resultId = target.getAttribute("value");
+
+            const result =
+              resultId && graphics && graphics[parseInt(resultId, 10)];
+
+            if (result) {
+              view.popup.open({
+                features: [result],
+                location: result.geometry
+              });
+              view.goTo(result.geometry)
+            }
+          }
+
+          clearQueryButton.addEventListener("click", () => {
+            clearQueryButton.appearance = "solid";
+            queryQuakesButton.appearance = "outline";
+            layerView.filter = null;
+            view.popup.close();
+            document.getElementById("resultsHeading").innerHTML = `Results`;
+            document.getElementById("results").innerHTML = "";
+          });
+         })
+      })
+   </script>
+</head>
+
+<body>
+   <div id="viewDiv"></div>
+   <calcite-panel id="infoDiv" class="calcite-theme-dark">
+      <h3 class="heading" slot="header-content">
+         Earthquake Query
+      </h3>
+      <div id="content" style="padding: 5px">
+         <label>
+            <calcite-radio-group id="depthSort" layout="horizontal" appearance="outline" scale="m" width="auto">
+               <calcite-radio-group-item value="DESC" checked="">Sort by Depth (DESC)</calcite-radio-group-item>
+               <calcite-radio-group-item value="ASC">Sort By Depth (ASC)</calcite-radio-group-item>
+            </calcite-radio-group>
+         </label><br /><br />
+         <label>
+            Magnitude:
+            <calcite-select id="magnitudeSelection" scale="s" width="auto">
+               <calcite-option label="All" value="TOTAL"></calcite-option>
+               <calcite-option label="&lt;6" value="LESS"></calcite-option>
+               <calcite-option label="&gt;6" value="GREATER"></calcite-option>
+            </calcite-select>
+         </label><br />
+         <div style="width: 360px; max-width: 100%; display: flex;flex-direction: row;">
+            <calcite-button id="query-quakes" width="half" appearance="solid" alignment="center" scale="s">
+               Query
+            </calcite-button>
+            <calcite-button id="clear-query" width="half" appearance="outline" alignment="center" scale="s">
+               Clear query
+            </calcite-button>
+         </div>
+         <br />
+      </div>
+      <calcite-panel id="resultsDiv">
+         <h3 class="heading" id="resultsHeading" slot="header-content">
+            Results
+         </h3>
+         <div id="results"></div>
+      </calcite-panel>
+   </calcite-panel>
+</body>
+
+</html>
