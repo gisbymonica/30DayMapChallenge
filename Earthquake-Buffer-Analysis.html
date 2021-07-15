@@ -6,10 +6,8 @@
    <title>
       Earthquake visualization (3D)
    </title>
-   <link
-      rel="stylesheet"
-      href="https://js.arcgis.com/4.20/esri/themes/light/main.css"
-    />
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
+   <link rel="stylesheet" href="https://js.arcgis.com/4.20/esri/themes/light/main.css" />
    <script src="https://js.arcgis.com/4.20/"></script>
 
    <style>
@@ -21,13 +19,19 @@
          height: 100%;
          width: 100%;
       }
+
       #resultDiv {
-        min-width: 250px;
-        font-size: 14px;
-        padding: 10px;
-        display: block;
-        overflow-y: auto;
-        overflow-x: hidden;
+         min-width: 250px;
+         font-size: 14px;
+         padding: 10px;
+         display: block;
+         overflow-y: auto;
+         overflow-x: hidden;
+      }
+
+      #bufferNum {
+         width: 90%;
+         margin: 2.5em auto 0;
       }
    </style>
 
@@ -41,11 +45,13 @@
          "esri/tasks/GeometryService",
          "esri/views/draw/Draw",
          "esri/Graphic",
-         "esri/rest/support/BufferParameters"
+         "esri/rest/support/BufferParameters",
+         "esri/widgets/Slider",
       ], function (FeatureLayer, Map, SceneView, Legend, Expand,
          GeometryService,
          Draw, Graphic,
-         BufferParams
+         BufferParams,
+         Slider
       ) {
 
          var renderer = {
@@ -174,6 +180,38 @@
 
          view.ui.add(legend, "bottom-left");
 
+         const bufferNumSlider = new Slider({
+            container: "bufferNum",
+            min: 250,
+            max: 1000,
+            steps: 10,
+            visibleElements: {
+               labels: true
+            },
+            precision: 0,
+            labelFormatFunction: (value, type) => {
+               return `${value.toString()}km`;
+            },
+            values: [0]
+         });
+         // get user entered values for buffer
+         bufferNumSlider.on(
+            ["thumb-change", "thumb-drag"],
+            bufferVariablesChanged
+         );
+         let bufferSize = 0;
+
+         function bufferVariablesChanged(event) {
+            bufferSize = event.value;
+         }
+         const clearGeometryBtn = document.getElementById("clearGeometry");
+         clearGeometryBtn.addEventListener("click", clearGeometry);
+         function clearGeometry() {
+            //  clearHighlighting();
+             clearCharts();
+            document.getElementById('countDiv').style.display = "none";
+         }
+
          let draw = new Draw({
             view: view
          });
@@ -184,12 +222,40 @@
          view.whenLayerView(earthQuakeLayer).then(function (layerView) {
             layerView.watch("updating", function (value) {
                if (!value) {
-                  document.getElementById("drawBuffer").addEventListener("click", ()=> {
+                  document.getElementById("resultDiv").style.display = "block";
+                  document.getElementById("drawBuffer").addEventListener("click", () => {
+                     document.getElementById("drawBuffer").disabled = true;
+                     //statistics
+                     const statDefinitions = [
+                        {
+                           onStatisticField:
+                              "CASE WHEN (mag >= 0 AND mag <= 4) THEN 1 ELSE 0 END",
+                           outStatisticFieldName: "very_minor",
+                           statisticType: "sum"
+                        },
+                        {
+                           onStatisticField:
+                              "CASE WHEN (mag > 4 AND mag <= 6) THEN 1 ELSE 0 END",
+                           outStatisticFieldName: "minor",
+                           statisticType: "sum"
+                        },
+                        {
+                           onStatisticField:
+                              "CASE WHEN (mag > 6 AND mag <= 7) THEN 1 ELSE 0 END",
+                           outStatisticFieldName: "major",
+                           statisticType: "sum"
+                        },
+                        {
+                           onStatisticField:
+                              "CASE WHEN mag > 7 THEN 1 ELSE 0 END",
+                           outStatisticFieldName: "very_major",
+                           statisticType: "sum"
+                        }
+                     ];
+
+
                      let action = draw.create("point");
-                     action.on("cursor-update", function (evt) {
-                        createPointGraphic(evt.coordinates);
-                     });
-   
+
                      action.on("draw-complete", function (evt) {
                         createPointGraphic(evt.coordinates);
                         let point = {
@@ -199,26 +265,37 @@
                            spatialReference: view.spatialReference
                         };
                         let bufferParams = new BufferParams({
-                           distances: [500],
+                           distances: [bufferSize],
                            geometries: point,
                            unit: "kilometers"
                         })
-                        let geomService = new GeometryService({url:"https://sampleserver6.arcgisonline.com/arcgis/rest/services/Utilities/Geometry/GeometryServer"})
+                        let geomService = new GeometryService({ url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/Utilities/Geometry/GeometryServer" })
                         geomService.buffer(
                            bufferParams
-                        ).then(function(bufferResults){
+                        ).then(function (bufferResults) {
                            console.log(bufferResults[0])
                            layerView.queryFeatures({
-                           where: "1=1",
-                           outFields: ["*"],
-                           geometry: bufferResults[0],
-                           returnGeometry: true
-                           }).then(function(results){
-                              document.getElementById("count").innerHTML = results.features.length
+                              where: "1=1",
+                              outFields: ["*"],
+                              geometry: bufferResults[0],
+                              outStatistics: statDefinitions,
+                              returnGeometry: true
+                           }).then(function (results) {
+                              document.getElementById('countDiv').style.display = "block";
+                              const allStats = results.features[0].attributes;
+                              updateChart(materialChart, [
+                                 allStats.very_minor,
+                                 allStats.minor,
+                                 allStats.major,
+                                 allStats.very_major
+                              ]);
+                              let count = allStats.very_major + allStats.very_minor + allStats.major + allStats.minor
+                              document.getElementById("count").innerHTML = count;
+                              document.getElementById("drawBuffer").disabled = false;
                            })
                         })
                      });
-   
+
                      function createPointGraphic(coordinates) {
                         view.graphics.removeAll();
                         let point = {
@@ -227,7 +304,7 @@
                            y: coordinates[1],
                            spatialReference: view.spatialReference
                         };
-   
+
                         let graphic = new Graphic({
                            geometry: point,
                            symbol: {
@@ -248,20 +325,81 @@
             })
          })
 
+         
+         function updateChart(chart, dataValues) {
+                        chart.data.datasets[0].data = dataValues;
+                        chart.update();
+                     }
+
+                     function createMaterialChart() {
+                        const materialCanvas = document.getElementById("material-chart");
+                        materialChart = new Chart(materialCanvas.getContext("2d"), {
+                           type: "doughnut",
+                           data: {
+                              labels: ["Insignificant", "Minor", "Major", "Severe"],
+                              datasets: [
+                                 {
+                                    backgroundColor: [
+                                       "#FD7F6F",
+                                       "#7EB0D5",
+                                       "#B2E061",
+                                       "#BD7EBE",
+                                       "#FFB55A"
+                                    ],
+                                    borderWidth: 0,
+                                    data: [0, 0, 0, 0, 0]
+                                 }
+                              ]
+                           },
+                           options: {
+                              responsive: false,
+                              cutoutPercentage: 35,
+                              legend: {
+                                 position: "bottom"
+                              },
+                              title: {
+                                 display: true,
+                                 text: "Magnitude Chart"
+                              }
+                           }
+                        });
+                     }
+
+                     createMaterialChart();
+
+                     function clearCharts() {
+                        updateChart(materialChart, [0, 0, 0, 0, 0]);
+                        document.getElementById("count").innerHTML = 0;
+                     }
+
       });
    </script>
 </head>
 
 <body>
    <div id="viewDiv"></div>
-   <div id="resultDiv" class="esri-widget">
-      <h3>Draw Buffer for Spatial Query</h3>
+   <div id="resultDiv" class="esri-widget" style="display: none;">
+      <h3>Spatial Query</h3>
+      <div class="tooltip">
+         <label for="bufferNum">Slide to choose buffer size:</label>
+         <div id="bufferNum"></div>
+      </div>
+      <br />
       <div>
          <button id="drawBuffer" class="esri-widget--button esri-icon-map-pin geometry-button"></button>
       </div>
-      <div class="count" id="countDiv">
-        Number of Earthquakes within 500 KM radius of the point:
-        <div class="count" id="count">0</div>
+      <br />
+      <button class="esri-button" id="clearGeometry" type="button">
+         Clear
+      </button>
+      <div class="count" id="countDiv" style="display: none;">
+         Number of Earthquakes within buffer:
+         <div class="count" id="count">0</div>
+         <div class="charts">
+            <div>
+               <canvas id="material-chart" width="250" height="300" />
+            </div>
+         </div>
       </div>
    </div>
 </body>
