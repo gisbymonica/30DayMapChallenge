@@ -26,7 +26,7 @@
       #infoDiv {
          padding: 6px;
          width: 370px;
-         height: 97%;
+         height: 75%;
          position: absolute;
          top: 10px;
          right: 10px;
@@ -38,6 +38,13 @@
          overflow: auto;
          display: none;
       }
+
+      #timeSlider {
+         position: absolute;
+         left: 5%;
+         right: 5%;
+         bottom: 20px;
+      }
    </style>
 
    <script>
@@ -48,14 +55,9 @@
          "esri/widgets/Legend",
          "esri/widgets/Expand",
          "esri/symbols/WebStyleSymbol",
-         "esri/Basemap",
-         "esri/rest/support/TopFeaturesQuery",
-         "esri/rest/support/TopFilter"
+         "esri/widgets/TimeSlider",
       ], (FeatureLayer, Map, SceneView, Legend, Expand,
-         WebStyleSymbol,
-         Basemap,
-         TopFeaturesQuery,
-         TopFilter) => {
+         WebStyleSymbol, TimeSlider) => {
 
          var renderer = {
             type: "simple",
@@ -148,7 +150,10 @@
             url:
                "https://services9.arcgis.com/RHVPKKiFTONKtxq3/ArcGIS/rest/services/USGS_Seismic_Data_v1/FeatureServer/0",
             renderer: renderer,
-            popupTemplate: template
+            popupTemplate: template,
+            timeInfo: {
+               startField: "eventTime"
+            }
          });
 
 
@@ -160,14 +165,14 @@
          var initCam = {
             position: {
                x: 15094839,
-               y: 513987,
+               y: 2013987,
                z: 5803278,
                spatialReference: {
                   wkid: 3857
                }
             },
-            heading: 358.8,
-            tilt: 13.7
+            heading: 358,
+            tilt: 13
          };
 
          var view = new SceneView({
@@ -182,10 +187,10 @@
                style: "classic"
             }),
             view: view,
-            expanded: true
+            expanded: false
          });
 
-         view.ui.add(legend, "bottom-left");
+         view.ui.add(legend, "top-left");
 
          //QUERY
 
@@ -214,6 +219,10 @@
                         whereClause = "1=1"
                      }
                      orderByClause = [`depth ${depthSortOption}`]
+                     document.getElementById("resultsDiv").style.display = "block";
+                           document.getElementById(
+                              "resultsHeading"
+                           ).innerHTML = 'Loading..';
                      layerView
                         .queryFeatures({
                            where: whereClause,
@@ -265,10 +274,32 @@
                clearQueryButton.appearance = "solid";
                queryQuakesButton.appearance = "outline";
                view.popup.close();
+               document.getElementById("resultsDiv").style.display = "none";
                document.getElementById("resultsHeading").innerHTML = `Results`;
                document.getElementById("results").innerHTML = "";
             });
          })
+
+
+         //TIMESLIDER
+
+         const timeSlider = new TimeSlider({
+            container: "timeSlider",
+            view: view,
+            timeVisible: true,
+            loop: false
+         });
+
+         view.whenLayerView(earthQuakeLayer).then((lv) => {
+            alert("Hit Play to View Time Series of Earthquakes")
+            timeSlider.fullTimeExtent = earthQuakeLayer.timeInfo.fullTimeExtent.expandTo(
+               "hours"
+            );
+            timeSlider.stops = {
+               interval: 1,
+               units: "esriTimeUnitsWeeks"
+            };
+         });
       })
    </script>
 </head>
@@ -311,6 +342,7 @@
          <div id="results"></div>
       </calcite-panel>
    </calcite-panel>
+   <div id="timeSlider"></div>
 </body>
 
 </html>
