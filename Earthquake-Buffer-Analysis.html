@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+   <meta charset="utf-8" />
+   <title>
+      Earthquake visualization (3D)
+   </title>
+   <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.20/esri/themes/light/main.css"
+    />
+   <script src="https://js.arcgis.com/4.20/"></script>
+
+   <style>
+      html,
+      body,
+      #viewDiv {
+         padding: 0;
+         margin: 0;
+         height: 100%;
+         width: 100%;
+      }
+      #resultDiv {
+        min-width: 250px;
+        font-size: 14px;
+        padding: 10px;
+        display: block;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+   </style>
+
+   <script>
+      require([
+         "esri/layers/FeatureLayer",
+         "esri/Map",
+         "esri/views/SceneView",
+         "esri/widgets/Legend",
+         "esri/widgets/Expand",
+         "esri/tasks/GeometryService",
+         "esri/views/draw/Draw",
+         "esri/Graphic",
+         "esri/rest/support/BufferParameters"
+      ], function (FeatureLayer, Map, SceneView, Legend, Expand,
+         GeometryService,
+         Draw, Graphic,
+         BufferParams
+      ) {
+
+         var renderer = {
+            type: "simple",
+            symbol: {
+               type: "point-3d",
+               symbolLayers: [
+                  {
+                     type: "object",
+                     resource: {
+                        primitive: "cone"
+                     },
+                     width: 50000,
+                  }
+               ]
+            },
+            label: "Earthquake Location",
+            visualVariables: [
+               {
+                  type: "color",
+                  field: "mag",
+                  stops: [
+                     {
+                        value: 0,
+                        color: "blue"
+                     },
+                     {
+                        value: 7,
+                        color: "red"
+                     }
+                  ]
+               },
+               {
+                  type: "size",
+                  field: "depth",
+                  stops: [
+                     {
+                        value: 20,
+                        size: 60000
+                     },
+                     {
+                        value: 150,
+                        size: 500000
+                     }
+                  ],
+                  axis: "height"
+               },
+               {
+                  type: "size",
+                  axis: "width-and-depth",
+                  useSymbolValue: true
+               }
+            ]
+         };
+
+         var template = {
+            content: [
+               {
+                  type: "fields",
+                  fieldInfos: [
+                     {
+                        fieldName: "mag",
+                        label: "Magnitude"
+                     },
+                     {
+                        fieldName: "depth",
+                        label: "Depth"
+                     },
+                     {
+                        fieldName: "sig",
+                        label: "Significance"
+                     },
+                     {
+                        fieldName: "alert",
+                        label: "Alert"
+                     },
+                     {
+                        fieldName: "detail",
+                        label: "Detail"
+                     }
+                  ]
+               }
+            ]
+         };
+
+         var earthQuakeLayer = new FeatureLayer({
+            url:
+               "https://services9.arcgis.com/RHVPKKiFTONKtxq3/ArcGIS/rest/services/USGS_Seismic_Data_v1/FeatureServer/0",
+            renderer: renderer,
+            popupTemplate: template
+         });
+
+
+         var map = new Map({
+            basemap: "topo",
+            layers: [earthQuakeLayer]
+         });
+
+         var initCam = {
+            position: {
+               x: 15094839,
+               y: 513987,
+               z: 5803278,
+               spatialReference: {
+                  wkid: 3857
+               }
+            },
+            heading: 358.8,
+            tilt: 13.7
+         };
+
+         var view = new SceneView({
+            map: map,
+            container: "viewDiv",
+            camera: initCam
+         });
+
+         const legend = new Expand({
+            content: new Legend({
+               view: view,
+               style: "classic"
+            }),
+            view: view,
+            expanded: true
+         });
+
+         view.ui.add(legend, "bottom-left");
+
+         let draw = new Draw({
+            view: view
+         });
+
+
+         view.ui.add(document.getElementById("resultDiv"), "top-right");
+
+         view.whenLayerView(earthQuakeLayer).then(function (layerView) {
+            layerView.watch("updating", function (value) {
+               if (!value) {
+                  document.getElementById("drawBuffer").addEventListener("click", ()=> {
+                     let action = draw.create("point");
+                     action.on("cursor-update", function (evt) {
+                        createPointGraphic(evt.coordinates);
+                     });
+   
+                     action.on("draw-complete", function (evt) {
+                        createPointGraphic(evt.coordinates);
+                        let point = {
+                           type: "point", // autocasts as /Point
+                           x: evt.coordinates[0],
+                           y: evt.coordinates[1],
+                           spatialReference: view.spatialReference
+                        };
+                        let bufferParams = new BufferParams({
+                           distances: [500],
+                           geometries: point,
+                           unit: "kilometers"
+                        })
+                        let geomService = new GeometryService({url:"https://sampleserver6.arcgisonline.com/arcgis/rest/services/Utilities/Geometry/GeometryServer"})
+                        geomService.buffer(
+                           bufferParams
+                        ).then(function(bufferResults){
+                           console.log(bufferResults[0])
+                           layerView.queryFeatures({
+                           where: "1=1",
+                           outFields: ["*"],
+                           geometry: bufferResults[0],
+                           returnGeometry: true
+                           }).then(function(results){
+                              document.getElementById("count").innerHTML = results.features.length
+                           })
+                        })
+                     });
+   
+                     function createPointGraphic(coordinates) {
+                        view.graphics.removeAll();
+                        let point = {
+                           type: "point", // autocasts as /Point
+                           x: coordinates[0],
+                           y: coordinates[1],
+                           spatialReference: view.spatialReference
+                        };
+   
+                        let graphic = new Graphic({
+                           geometry: point,
+                           symbol: {
+                              type: "simple-marker", // autocasts as SimpleMarkerSymbol
+                              style: "square",
+                              color: "red",
+                              size: "16px",
+                              outline: { // autocasts as SimpleLineSymbol
+                                 color: [255, 255, 0],
+                                 width: 3
+                              }
+                           }
+                        });
+                        view.graphics.add(graphic);
+                     }
+                  })
+               }
+            })
+         })
+
+      });
+   </script>
+</head>
+
+<body>
+   <div id="viewDiv"></div>
+   <div id="resultDiv" class="esri-widget">
+      <h3>Draw Buffer for Spatial Query</h3>
+      <div>
+         <button id="drawBuffer" class="esri-widget--button esri-icon-map-pin geometry-button"></button>
+      </div>
+      <div class="count" id="countDiv">
+        Number of Earthquakes within 500 KM radius of the point:
+        <div class="count" id="count">0</div>
+      </div>
+   </div>
+</body>
+
+</html>
