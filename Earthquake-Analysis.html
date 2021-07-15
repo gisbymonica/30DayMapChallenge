@@ -4,7 +4,7 @@
 <head>
    <meta charset="utf-8" />
    <title>
-      Earthquake visualization (3D)
+      Earthquakes in 3D
    </title>
    <link rel="stylesheet" href="https://js.arcgis.com/4.20/esri/themes/light/main.css" />
    <script type="module" src="https://js.arcgis.com/calcite-components/1.0.0-beta.56/calcite.esm.js"></script>
@@ -222,7 +222,6 @@
                            returnGeometry: true
                         })
                         .then(function (results) {
-                           // do something with the resulting graphics
                            console.log(results.features)
                            document.getElementById("resultsDiv").style.display = "block";
                            document.getElementById(
@@ -243,38 +242,32 @@
                               item.addEventListener("click", quakeResultClickHandler);
                               document.getElementById("results").appendChild(item);
                            });
-                           // graphics = results.features;
                         });
                   })
-                  // wait for the layer view to finish updating
-                  // get all the features available for drawing.
                }
             });
 
             function quakeResultClickHandler(event) {
-            const target = event.target;
-            const resultId = target.getAttribute("value");
-
-            const result =
-              resultId && graphics && graphics[parseInt(resultId, 10)];
-
-            if (result) {
-              view.popup.open({
-                features: [result],
-                location: result.geometry
-              });
-              view.goTo(result.geometry)
+               const target = event.target;
+               const resultId = target.getAttribute("value");
+               const result =
+                  resultId && graphics && graphics[parseInt(resultId, 10)];
+               if (result) {
+                  view.popup.open({
+                     features: [result],
+                     location: result.geometry
+                  });
+                  view.goTo(result.geometry)
+               }
             }
-          }
 
-          clearQueryButton.addEventListener("click", () => {
-            clearQueryButton.appearance = "solid";
-            queryQuakesButton.appearance = "outline";
-            layerView.filter = null;
-            view.popup.close();
-            document.getElementById("resultsHeading").innerHTML = `Results`;
-            document.getElementById("results").innerHTML = "";
-          });
+            clearQueryButton.addEventListener("click", () => {
+               clearQueryButton.appearance = "solid";
+               queryQuakesButton.appearance = "outline";
+               view.popup.close();
+               document.getElementById("resultsHeading").innerHTML = `Results`;
+               document.getElementById("results").innerHTML = "";
+            });
          })
       })
    </script>
